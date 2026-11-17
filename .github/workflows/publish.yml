@@ -61,6 +61,9 @@ jobs:
         run: python -m pip install --upgrade pyinstaller
 
       - name: 打包 Python sidecar
+        env:
+          # runner 默认 cp1252，脚本里的中文输出会直接崩
+          PYTHONIOENCODING: utf-8
         run: python scripts/build-sidecar.py
 
       - name: 构建并发布

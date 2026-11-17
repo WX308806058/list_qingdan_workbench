@@ -37,13 +37,13 @@ def main():
         "--specpath", BACKEND,
         os.path.join(BACKEND, "sidecar.py"),
     ]
-    print("→", " ".join(cmd))
+    print(">>", " ".join(cmd))
     if subprocess.run(cmd, cwd=ROOT).returncode != 0:
-        raise SystemExit("PyInstaller 失败")
+        raise SystemExit("PyInstaller failed")
 
     shutil.copytree(os.path.join(DIST, NAME), STAGE)
     exe = os.path.join(STAGE, NAME + ".exe")
-    print(f"\nsidecar 就绪：{exe}  ({os.path.getsize(exe) / 1024 / 1024:.1f} MB exe)")
+    print(f"sidecar ready: {exe}  ({os.path.getsize(exe) / 1024 / 1024:.1f} MB exe)")
 
 
 if __name__ == "__main__":
