@@ -52,27 +52,62 @@ fn wait_port(port: u16, timeout: Duration) -> bool {
     false
 }
 
-/// 启动后静默检查更新；有新版本就下载安装并重启。
+/// 杀掉 sidecar 并等它真的退出（kill 只是发信号，句柄可能还没释放）。
+fn kill_sidecar(app: &tauri::AppHandle) {
+    if let Some(state) = app.try_state::<Sidecar>() {
+        if let Ok(mut guard) = state.0.lock() {
+            if let Some(mut c) = guard.take() {
+                let _ = c.kill();
+                let _ = c.wait();
+            }
+        }
+    }
+}
+
+/// 启动后静默检查更新：下载 → 落临时文件 → 用 /S 静默安装 → 拉起新版本。
+///
+/// 不用 `download_and_install()`：它内部跑的安装器会弹交互式向导，
+/// 用户正开着应用时突然冒出安装界面很吓人，而且被 sidecar 锁文件时会卡住。
 fn check_update(app: tauri::AppHandle) {
     tauri::async_runtime::spawn(async move {
         let updater = match app.updater() {
             Ok(u) => u,
             Err(_) => return,
         };
-        if let Ok(Some(update)) = updater.check().await {
-            if update
-                .download_and_install(|_, _| {}, || {})
-                .await
-                .is_ok()
-            {
-                // app.restart() 在「安装包刚替换完文件」的时刻拉起新进程不可靠，
-                // 会静默退出；改成自己起一个再退，配合启动时的端口等待。
-                if let Ok(exe) = std::env::current_exe() {
-                    let _ = Command::new(exe).spawn();
-                }
-                app.exit(0);
+
+        let update = match updater.check().await {
+            Ok(Some(u)) => u,
+            _ => return,
+        };
+
+        let bytes = match update.download(|_, _| {}, || {}).await {
+            Ok(b) => b,
+            Err(_) => return,
+        };
+
+        // 安装前先杀 sidecar，否则它锁着 _internal 里的 DLL
+        kill_sidecar(&app);
+        std::thread::sleep(Duration::from_millis(800));
+
+        let installer = std::env::temp_dir().join("qingdan-update-setup.exe");
+        if std::fs::write(&installer, &bytes).is_err() {
+            return;
+        }
+
+        // /S = NSIS 静默安装；status() 等它真正装完再拉新版本
+        let ok = Command::new(&installer)
+            .arg("/S")
+            .status()
+            .map(|st| st.success())
+            .unwrap_or(false);
+        let _ = std::fs::remove_file(&installer);
+
+        if ok {
+            if let Ok(exe) = std::env::current_exe() {
+                let _ = Command::new(exe).spawn();
             }
         }
+        app.exit(0);
     });
 }
 
@@ -129,13 +164,7 @@ fn main() {
 
     app.run(|handle, event| {
         if let RunEvent::Exit = event {
-            if let Some(state) = handle.try_state::<Sidecar>() {
-                if let Ok(mut guard) = state.0.lock() {
-                    if let Some(mut c) = guard.take() {
-                        let _ = c.kill();
-                    }
-                }
-            }
+            kill_sidecar(handle);
         }
     });
 }
