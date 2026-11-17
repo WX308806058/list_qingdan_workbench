@@ -1,0 +1,547 @@
+{
+  "config": {
+    "windowDays": 14,
+    "workbenchName": "微信客户沟通工作台",
+    "owner": "实施交付",
+    "exclude": [
+      "火锅小分队",
+      "码农小队",
+      "文明交流，礼貌用语。",
+      "G-bee",
+      "妈妈",
+      "爸爸",
+      "姐",
+      "阿姨",
+      "打牌",
+      "微信团队",
+      "文件传输助手",
+      "新光社区居民群34",
+      ".Net开发交流",
+      "著作权申请交流群"
+    ]
+  },
+  "projects": [
+    {
+      "id": "guanya-crm",
+      "name": "冠亚恒温",
+      "subtitle": "销售易 CRM ↔ U9 接口",
+      "priority": "P0",
+      "owner": "王欣 / 昌蓓 / 致阔",
+      "tags": [
+        "CRM",
+        "U9",
+        "接口"
+      ],
+      "match": [
+        "*销售易*U9*",
+        "*冠亚恒温*"
+      ],
+      "closed": [
+        {
+          "date": "10-28",
+          "text": "CRM 推送测试账套后前台查不到 → 列表页需点【查询】按钮，非数据问题"
+        },
+        {
+          "date": "10-27",
+          "text": "首单 HT#20261027-0002 全链路成功（含回写）"
+        },
+        {
+          "date": "10-27",
+          "text": "ERP 销售订单三层结构打通：SM_SO / SM_SOLine / SM_SOShipline"
+        },
+        {
+          "date": "10-26",
+          "text": "超时架构改造：10s 内返回 RECEIVED，结果全部走回写接口"
+        },
+        {
+          "date": "10-26",
+          "text": "客户编码 CRM-/ 异常 → CRM 侧税号填了 /，已提示禁止"
+        },
+        {
+          "date": "10-25",
+          "text": "开票附件：先取文件 ID 填 attachment__c（单字段上限 9 个，多文件可打 zip）"
+        },
+        {
+          "date": "10-24",
+          "text": "业务员名称 / 编码字段已加接口并更新"
+        }
+      ],
+      "open": [
+        {
+          "level": "P0",
+          "key": "crm-org-code-field",
+          "text": "组织字段改传编码，恢复 order/information（当前报 500）",
+          "owner": "CRM 致阔 / 昌蓓",
+          "due": "立即"
+        },
+        {
+          "level": "P0",
+          "key": "crm-writeback-2fields",
+          "text": "回写接口补「同步状态」「修改同步信息」两字段",
+          "owner": "CRM 昌蓓",
+          "due": "本周"
+        },
+        {
+          "level": "P1",
+          "key": "crm-ht-0001-amount",
+          "text": "HT#20261027-0001 收款金额校验报错（整单应可收款金额为 0）",
+          "owner": "致阔",
+          "due": "10-29"
+        },
+        {
+          "level": "P1",
+          "key": "crm-forecast-contract",
+          "text": "预测合同推送规则确认（预审合同需转正式后推送）",
+          "owner": "内部 + 孙茂洋",
+          "due": "本周"
+        }
+      ],
+      "risks": [
+        {
+          "level": "high",
+          "title": "CRM 10s 超时不可改",
+          "detail": "已用「异步 + 回写」绕开。一旦回写接口不可用，业务侧无法感知失败，建议补失败补偿与告警。"
+        }
+      ]
+    },
+    {
+      "id": "guanya-plm",
+      "name": "冠亚",
+      "subtitle": "PLM ↔ U9 接口",
+      "priority": "P0",
+      "owner": "孙茂洋 / 陈敏 / 董其荣",
+      "tags": [
+        "PLM",
+        "U9",
+        "ECN"
+      ],
+      "match": [
+        "*PLM-U9*",
+        "*PLM*U9*"
+      ],
+      "closed": [
+        {
+          "date": "10-21",
+          "text": "ECN 验证通过：JG610100000047 的 01/02 版本，ECN-0005 创建/审核/发行成功"
+        },
+        {
+          "date": "10-20",
+          "text": "接口权限未开放导致 PLM 收不到返回 → 已开通，返回结构统一为 result/data/bomResults/masterOutcomes"
+        },
+        {
+          "date": "10-16",
+          "text": "BOM 复制报「主产品生效/失效日期未覆盖联产品范围」→ 前挪生效日期解决"
+        },
+        {
+          "date": "10-15",
+          "text": "ECN 接口上线：/plm/u9PlmErpEcnDoc/doErpEcnDoc 替代原 BOM 接口（新建走旧接口、变更走 ECN）"
+        }
+      ],
+      "open": [
+        {
+          "level": "P1",
+          "key": "plm-slow-io",
+          "text": "PLM 保存/加载卡顿（5 分钟 vs 平时 3 秒）→ 核查 serverPool.properties 时段",
+          "owner": "孙茂洋",
+          "due": "本周"
+        },
+        {
+          "level": "P2",
+          "key": "plm-testenv-stability",
+          "text": "PLM 测试环境反复关闭，需约定稳定性保障机制",
+          "owner": "孙茂洋 / 陈敏",
+          "due": "持续"
+        }
+      ],
+      "risks": [
+        {
+          "level": "high",
+          "title": "U9 测试与正式同 IP",
+          "detail": "均为 58.215.245.174:8780，仅靠企业编码区分（测试 995 / 正式 002）。已发生过误传 002 到正式环境，建议 PLM 侧固化配置并加校验。"
+        },
+        {
+          "level": "mid",
+          "title": "PLM 测试环境不稳定",
+          "detail": "近两周至少 3 次不可用（192.168.1.205:8089），直接阻塞 CRM→PLM→U9 联调。"
+        }
+      ]
+    },
+    {
+      "id": "guanya-mes",
+      "name": "冠亚",
+      "subtitle": "MES ↔ U9 接口",
+      "priority": "P1",
+      "owner": "詹震 / 康家齐 / 王欣",
+      "tags": [
+        "MES",
+        "U9"
+      ],
+      "match": [
+        "*MES*",
+        "*冠亚项目实施内部群*"
+      ],
+      "closed": [
+        {
+          "date": "10-20",
+          "text": "委外工序开工新增「保温委外」字段 warmPcs（单位 PCS，U9 最多 3 位小数），当晚已上线"
+        },
+        {
+          "date": "10-20",
+          "text": "MES 侧同步更新模板与实体"
+        },
+        {
+          "date": "10-23",
+          "text": "用友 TLS 1.0/1.1 强制升级公告 → 判断数据库版本不老即无影响"
+        }
+      ],
+      "open": [],
+      "risks": []
+    },
+    {
+      "id": "guanya-it",
+      "name": "冠亚 IT 对口",
+      "subtitle": "孙茂洋 · 私聊与内部协调",
+      "priority": "P1",
+      "owner": "孙茂洋",
+      "tags": [
+        "私聊",
+        "协调"
+      ],
+      "match": [
+        "*无锡冠亚IT*",
+        "*孙茂洋*"
+      ],
+      "closed": [],
+      "open": [
+        {
+          "level": "P2",
+          "key": "gy-quote-days",
+          "text": "接口人天报价待确认（12 个接口 30 人天，含财务接口）",
+          "owner": "内部",
+          "due": "本周"
+        }
+      ],
+      "risks": []
+    },
+    {
+      "id": "meiruoke",
+      "name": "美偌科",
+      "subtitle": "U9 运维支持",
+      "priority": "P1",
+      "owner": "董经理 / 王攀友 / 雷盛萍",
+      "tags": [
+        "U9",
+        "运维"
+      ],
+      "match": [
+        "*美偌科*"
+      ],
+      "closed": [
+        {
+          "date": "10-28",
+          "text": "晶圆出口销售出货单据类型变成「品-出口销售」→ 方案币种设置问题，已修复"
+        },
+        {
+          "date": "10-26",
+          "text": "扫码串号：给出完整规则（同出货行禁扫相同箱码 / 跨行按箱码余量扣减 / 保存时按料号+品名+批号+番号校验库存）"
+        },
+        {
+          "date": "10-25",
+          "text": "客户超额 → 信用占用规则修改后恢复"
+        },
+        {
+          "date": "10-24",
+          "text": "已用额度 800 万 vs 额度 300 万异常 → 剔除销售订单占用后修正"
+        },
+        {
+          "date": "10-23",
+          "text": "现款客户收款未触发 ERP 提示 → 条件漏配，已补"
+        },
+        {
+          "date": "10-22",
+          "text": "成品无锡库调出审核不了 → 雷盛萍处理"
+        }
+      ],
+      "open": [
+        {
+          "level": "P2",
+          "key": "mrk-batch-drift",
+          "text": "批号 A0E7649 多 3000 / A0E7655 少 3000（账平但批号有差）持续观察",
+          "owner": "王攀友",
+          "due": "观察"
+        },
+        {
+          "level": "P2",
+          "key": "mrk-shortage-wafer",
+          "text": "收货欠料：晶圆 A069726（收货单 RCV2610200001 / 备料单 PM-2026090395）",
+          "owner": "董经理",
+          "due": "跟进"
+        }
+      ],
+      "risks": []
+    },
+    {
+      "id": "yingzhen",
+      "name": "英臻",
+      "subtitle": "U9 实施 / 供应商平台",
+      "priority": "P2",
+      "owner": "徐芳",
+      "tags": [
+        "U9",
+        "单据号"
+      ],
+      "match": [
+        "*英臻*"
+      ],
+      "closed": [
+        {
+          "date": "10-28",
+          "text": "两账套（英臻 / 江苏虚拟）出货单号重复 → 虚拟电厂单号加前缀 XN，14:22 提出、16:47 改好上线"
+        }
+      ],
+      "open": [],
+      "risks": []
+    },
+    {
+      "id": "qien",
+      "name": "齐恩",
+      "subtitle": "U8 开发与需求",
+      "priority": "P1",
+      "owner": "孟庆爱 / 唐亮",
+      "tags": [
+        "U8",
+        "需求",
+        "人天"
+      ],
+      "match": [
+        "*齐恩*"
+      ],
+      "closed": [
+        {
+          "date": "10-27",
+          "text": "四笔入库单疑似重复扫码 → 核查为不同批次/货位，无异常"
+        },
+        {
+          "date": "10-26",
+          "text": "MCI 条码不含物料编码 → 无法用连扫模式，手动模式需求不可行（已回复）"
+        }
+      ],
+      "open": [
+        {
+          "level": "P2",
+          "key": "qien-expiry-mgmt",
+          "text": "思雅 U8 有效期管理：范围与通知方式确认后人天定稿（基础 4 天，加通知 +4~5 天）",
+          "owner": "孟庆爱",
+          "due": "待客户"
+        }
+      ],
+      "risks": []
+    },
+    {
+      "id": "sunan",
+      "name": "苏南机场",
+      "subtitle": "NCC 项目实施",
+      "priority": "P1",
+      "owner": "王娅娜 / 王多多",
+      "tags": [
+        "NCC",
+        "财资"
+      ],
+      "match": [
+        "*苏南机场*"
+      ],
+      "closed": [
+        {
+          "date": "10-23",
+          "text": "删除单据违反唯一约束 → 王娅娜已删除"
+        }
+      ],
+      "open": [
+        {
+          "level": "P2",
+          "key": "sunan-kp-detail-lost",
+          "text": "KP-202610261908 审批后明细行消失 → 待客户回忆填写内容",
+          "owner": "茉莉幽澜 / 王多多",
+          "due": "待客户"
+        },
+        {
+          "level": "P1",
+          "key": "sunan-pay-not-pushed",
+          "text": "费用在 NCC 审批通过但付款单未推送财资",
+          "owner": "待查",
+          "due": "10-21 起"
+        }
+      ],
+      "risks": []
+    },
+    {
+      "id": "yixing",
+      "name": "宜兴经开",
+      "subtitle": "U8C / 钉钉集成",
+      "priority": "P2",
+      "owner": "徐总 / 倪佳 / Leon",
+      "tags": [
+        "U8C",
+        "钉钉",
+        "回款"
+      ],
+      "match": [
+        "*宜兴经开*"
+      ],
+      "closed": [
+        {
+          "date": "10-27",
+          "text": "开尾款电子发票并已发送倪佳"
+        },
+        {
+          "date": "10-19",
+          "text": "集成成果报告 + 运维/操作手册打印盖章邮寄徐总 → Leon 已寄出"
+        }
+      ],
+      "open": [],
+      "risks": []
+    },
+    {
+      "id": "jiangyin",
+      "name": "江阴科产",
+      "subtitle": "ERP & OA 集成",
+      "priority": "P2",
+      "owner": "Popo Lau",
+      "tags": [
+        "OA",
+        "运维"
+      ],
+      "match": [
+        "*江阴科产*"
+      ],
+      "closed": [
+        {
+          "date": "10-23",
+          "text": "手机用户域名链接报错 → IP 39.144.157.86 被防火墙拉黑，已移出黑名单"
+        },
+        {
+          "date": "10-21",
+          "text": "服务 502 → Popo Lau 已恢复"
+        }
+      ],
+      "open": [],
+      "risks": []
+    },
+    {
+      "id": "keyan",
+      "name": "科砚酒管",
+      "subtitle": "ERP 实施",
+      "priority": "P2",
+      "owner": "—",
+      "tags": [
+        "ERP",
+        "授权"
+      ],
+      "match": [
+        "*科砚*"
+      ],
+      "closed": [
+        {
+          "date": "10-20",
+          "text": "抓数据报错 → 授权密钥过期，已走续期处理"
+        }
+      ],
+      "open": [],
+      "risks": []
+    },
+    {
+      "id": "zhikong",
+      "name": "质量控制智能云",
+      "subtitle": "系统运维",
+      "priority": "P2",
+      "owner": "—",
+      "tags": [
+        "运维"
+      ],
+      "match": [
+        "*质量控制*"
+      ],
+      "closed": [
+        {
+          "date": "10-19",
+          "text": "补强圈泄漏试验（管箱）图片归档目录调整到「装配」文件夹，晚间重启生效"
+        }
+      ],
+      "open": [],
+      "risks": []
+    },
+    {
+      "id": "fengkai",
+      "name": "风凯",
+      "subtitle": "U8 项目",
+      "priority": "P2",
+      "owner": "—",
+      "tags": [
+        "U8"
+      ],
+      "match": [
+        "*风凯*"
+      ],
+      "closed": [],
+      "open": [],
+      "risks": []
+    },
+    {
+      "id": "jindian",
+      "name": "金点（内部）",
+      "subtitle": "内部管理与报价",
+      "priority": "P2",
+      "owner": "内部",
+      "tags": [
+        "内部",
+        "报价",
+        "安全"
+      ],
+      "match": [
+        "*金点软件*",
+        "*金点*"
+      ],
+      "closed": [],
+      "open": [
+        {
+          "level": "P2",
+          "key": "jd-quote-merge",
+          "text": "冠亚接口人天报价与 SCM 合并报总价（12 个接口 30 人天，含财务接口）",
+          "owner": "内部",
+          "due": "本周"
+        },
+        {
+          "level": "P1",
+          "key": "jd-bip-security",
+          "text": "BIP 电信服务器两起中毒事件 → 要求全量打安全补丁",
+          "owner": "运维",
+          "due": "本周"
+        }
+      ],
+      "risks": [
+        {
+          "level": "mid",
+          "title": "BIP 电信服务器安全事件",
+          "detail": "近期两起中毒，需全量补丁并排查入侵途径。"
+        }
+      ]
+    },
+    {
+      "id": "shengxin",
+      "name": "圣鑫",
+      "subtitle": "U9C / OA 开发",
+      "priority": "P2",
+      "owner": "内部",
+      "tags": [
+        "U9C",
+        "OA"
+      ],
+      "match": [
+        "*圣鑫*"
+      ],
+      "closed": [],
+      "open": [],
+      "risks": []
+    }
+  ]
+}

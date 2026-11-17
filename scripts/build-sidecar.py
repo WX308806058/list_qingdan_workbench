@@ -1,0 +1,50 @@
+"""把 backend/ 打成 Tauri 资源里的 sidecar（PyInstaller onedir）。
+
+    python scripts/build-sidecar.py
+
+产物：src-tauri/sidecar/qingdan-backend/  （整目录随 Tauri 包分发）
+"""
+import os
+import shutil
+import subprocess
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
+BACKEND = os.path.join(ROOT, "backend")
+UI = os.path.join(ROOT, "ui")
+NAME = "qingdan-backend"
+
+DIST = os.path.join(BACKEND, "dist")
+BUILD = os.path.join(BACKEND, "build")
+STAGE = os.path.join(ROOT, "src-tauri", "sidecar", NAME)
+
+
+def main():
+    for d in (DIST, BUILD, os.path.join(ROOT, "src-tauri", "sidecar")):
+        shutil.rmtree(d, ignore_errors=True)
+
+    cmd = [
+        sys.executable, "-m", "PyInstaller",
+        "--noconfirm", "--clean", "--console",
+        "--name", NAME,
+        "--paths", BACKEND,
+        "--add-data", UI + ";ui",
+        "--add-data", os.path.join(BACKEND, "projects.json") + ";.",
+        "--hidden-import", "pipeline",
+        "--distpath", DIST,
+        "--workpath", BUILD,
+        "--specpath", BACKEND,
+        os.path.join(BACKEND, "sidecar.py"),
+    ]
+    print("→", " ".join(cmd))
+    if subprocess.run(cmd, cwd=ROOT).returncode != 0:
+        raise SystemExit("PyInstaller 失败")
+
+    shutil.copytree(os.path.join(DIST, NAME), STAGE)
+    exe = os.path.join(STAGE, NAME + ".exe")
+    print(f"\nsidecar 就绪：{exe}  ({os.path.getsize(exe) / 1024 / 1024:.1f} MB exe)")
+
+
+if __name__ == "__main__":
+    main()

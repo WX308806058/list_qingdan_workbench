@@ -1,0 +1,12 @@
+node_modules/
+src-tauri/target/
+src-tauri/sidecar/
+backend/dist/
+backend/build/
+backend/*.spec
+__pycache__/
+*.pyc
+
+# 签名私钥绝不能进仓库
+*.key
+*.key.pub

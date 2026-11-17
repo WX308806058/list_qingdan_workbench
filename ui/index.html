@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>清单工作台</title>
+<link rel="stylesheet" href="/ui/style.css">
+</head>
+<body>
+<div class="app" id="app">
+
+  <!-- ===================== 顶栏 ===================== -->
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span class="brand-name">清单工作台</span>
+    </div>
+
+    <div class="chips" id="chips" role="group" aria-label="指标"></div>
+
+    <div class="grow"></div>
+
+    <div class="search" id="searchBox">
+      <svg class="search-ico" viewBox="0 0 16 16" aria-hidden="true">
+        <circle cx="7" cy="7" r="4.5"></circle>
+        <path d="M10.4 10.4 L14 14"></path>
+      </svg>
+      <input id="q" type="search" placeholder="搜索记录 / 项目 / 会话" autocomplete="off"
+             spellcheck="false" aria-label="搜索">
+      <kbd class="search-kbd">/</kbd>
+    </div>
+
+    <label class="field" title="分组方式（快捷键 G）">
+      <span class="field-label">分组</span>
+      <select id="groupSel" aria-label="分组方式">
+        <option value="project">按项目</option>
+        <option value="urgency">按紧急度</option>
+        <option value="customer">按客户</option>
+        <option value="week">按周</option>
+      </select>
+    </label>
+
+    <button id="densityBtn" class="btn" type="button" title="切换行高（舒适 / 紧凑）">舒适</button>
+    <button id="logBtn" class="btn" type="button" title="把今天做的事整理成一份工作日志">工作日志</button>
+    <button id="exportBtn" class="btn" type="button" title="导出当前视图为 Markdown">导出</button>
+    <button id="refreshBtn" class="btn icon" type="button" title="重新采集微信数据" aria-label="重新采集">↻</button>
+  </header>
+
+  <!-- ===================== 三栏 ===================== -->
+  <div class="body">
+
+    <!-- 左栏 -->
+    <nav class="sidenav" aria-label="视图与项目">
+      <div class="nav-sec">
+        <div class="nav-title">视图</div>
+        <ul class="nav-list" id="viewList"></ul>
+      </div>
+      <div class="nav-sec">
+        <div class="nav-title">项目</div>
+        <ul class="nav-list" id="projectList"></ul>
+      </div>
+      <div class="nav-foot" id="navMeta"></div>
+    </nav>
+
+    <!-- 左分隔条 -->
+    <div class="rz" data-rz="left" role="separator" aria-orientation="vertical"
+         tabindex="0" aria-label="拖动调整左栏宽度，双击复位"></div>
+
+    <!-- 中栏 -->
+    <main class="main">
+      <div class="list-head" id="listHead"></div>
+      <div class="list-wrap" id="listWrap">
+        <div class="list" id="list"></div>
+      </div>
+      <div class="batch" id="batchBar" role="status" aria-live="polite">
+        <span class="batch-count" id="batchCount">已选 0 条</span>
+        <div class="batch-actions">
+          <button class="btn primary sm" type="button" data-batch="done">完成</button>
+          <button class="btn sm" type="button" data-batch="plus1">延期 1 天</button>
+          <button class="btn ghost sm" type="button" data-batch="clear">取消</button>
+        </div>
+      </div>
+    </main>
+
+    <!-- 右分隔条 -->
+    <div class="rz" data-rz="right" role="separator" aria-orientation="vertical"
+         tabindex="0" aria-label="拖动调整右栏宽度，双击复位"></div>
+
+    <!-- 右栏 -->
+    <aside class="detail" id="detail" aria-label="记录详情"></aside>
+
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<!-- 新建 / 编辑待办 -->
+<div class="modal" id="editModal" hidden>
+  <div class="modal-mask" data-edit-close></div>
+  <div class="modal-card narrow" role="dialog" aria-modal="true" aria-labelledby="edTitle">
+    <header class="modal-h">
+      <h2 id="edTitle">新建待办</h2>
+      <span class="grow"></span>
+      <button class="btn ghost sm" type="button" data-edit-close>关闭</button>
+    </header>
+    <div class="modal-body edit-body">
+      <label class="fld"><span>项目</span><select id="edProject"></select></label>
+      <label class="fld"><span>等级</span>
+        <select id="edLevel">
+          <option value="P0">P0 最急</option>
+          <option value="P1">P1 急</option>
+          <option value="P2" selected>P2 常规</option>
+          <option value="P3">P3 稍后</option>
+        </select>
+      </label>
+      <label class="fld"><span>截止</span><input id="edDue" type="text" placeholder="本周 / 10-20 / 立即，可留空"></label>
+      <label class="fld fld-col"><span>内容</span><textarea id="edText" rows="4" placeholder="要做什么，写给明天的自己看"></textarea></label>
+    </div>
+    <footer class="modal-f">
+      <button class="btn ghost sm" id="edDelete" type="button">删除</button>
+      <span class="grow"></span>
+      <button class="btn ghost sm" type="button" data-edit-close>取消</button>
+      <button class="btn primary sm" id="edSave" type="button">保存</button>
+    </footer>
+  </div>
+</div>
+
+<!-- 工作日志 -->
+<div class="modal" id="logModal" hidden>
+  <div class="modal-mask" data-log-close></div>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="logTitle">
+    <header class="modal-h">
+      <div class="seg" role="tablist" aria-label="输出格式">
+        <button class="seg-b on" type="button" data-logtab="doc" role="tab">工作日志</button>
+        <button class="seg-b" type="button" data-logtab="table" role="tab">表格记录</button>
+      </div>
+      <span class="grow"></span>
+      <button class="btn ghost sm" type="button" data-log-close>关闭</button>
+    </header>
+    <div class="modal-body log-doc" id="logBody"></div>
+    <footer class="modal-f">
+      <span class="modal-hint" id="logStat"></span>
+      <span class="grow"></span>
+      <button class="btn sm" type="button" data-log="copy">复制</button>
+      <button class="btn primary sm" type="button" data-log="download">下载 .md</button>
+    </footer>
+  </div>
+</div>
+
+<script type="module" src="/ui/app.js"></script>
+</body>
+</html>

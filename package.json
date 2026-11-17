@@ -1,0 +1,15 @@
+{
+  "name": "qingdan-workbench",
+  "private": true,
+  "version": "1.0.0",
+  "description": "清单工作台 — 微信客户沟通待办工作台",
+  "scripts": {
+    "sidecar": "python scripts/build-sidecar.py",
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}
