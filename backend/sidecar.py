@@ -21,8 +21,29 @@ def bundle_dir() -> str:
 
 
 def app_home() -> str:
-    base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
-    return os.path.join(base, APP_DIR_NAME)
+    """用户数据放 Roaming，与安装目录（%LOCALAPPDATA%\清单工作台）分开。
+
+    装到同一层的话，Tauri 的卸载程序可能把整个安装目录删掉，数据就没了。
+    """
+    base = os.environ.get("APPDATA") or os.path.expanduser("~")
+    home = os.path.join(base, APP_DIR_NAME)
+
+    # 一次性迁移：早期版本把数据放在 %LOCALAPPDATA%\清单工作台
+    legacy = os.path.join(os.environ.get("LOCALAPPDATA", ""), APP_DIR_NAME)
+    if not os.path.exists(os.path.join(home, "data")) and os.path.isdir(os.path.join(legacy, "data")):
+        os.makedirs(home, exist_ok=True)
+        for item in ("projects.json", "data", "cache", "records.json"):
+            src = os.path.join(legacy, item)
+            if os.path.exists(src):
+                dst = os.path.join(home, item)
+                try:
+                    if os.path.isdir(src):
+                        shutil.copytree(src, dst, dirs_exist_ok=True)
+                    else:
+                        shutil.copyfile(src, dst)
+                except Exception:
+                    pass
+    return home
 
 
 def ensure_user_data(bundle: str, home: str) -> str:

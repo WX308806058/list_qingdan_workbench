@@ -23,14 +23,17 @@
 ## 数据位置
 
 ```
-%LOCALAPPDATA%\清单工作台\
+%APPDATA%\清单工作台\           ← 用户数据（Roaming）
 ├── projects.json      项目定义 + 人工待办（可手改）
 ├── data\              待办快照、完成记录
 ├── cache\             微信库缓存、密钥
 └── backend.log        后端日志
+
+%LOCALAPPDATA%\清单工作台\      ← 程序文件（安装目录）
 ```
 
-卸载不会删除这个目录。**升级 / 重装后数据仍在。**
+两者刻意分开：安装/卸载只动程序目录，**待办与完成记录不受影响**。
+早期版本数据在 `%LOCALAPPDATA%\清单工作台\`，首次启动会自动迁移到 Roaming。
 
 微信密钥需要放在 `cache\wx_keys.json`，或 `%USERPROFILE%\.workbuddy\wx_keys.json`。
 
