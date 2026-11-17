@@ -65,7 +65,12 @@ fn check_update(app: tauri::AppHandle) {
                 .await
                 .is_ok()
             {
-                app.restart();
+                // app.restart() 在「安装包刚替换完文件」的时刻拉起新进程不可靠，
+                // 会静默退出；改成自己起一个再退，配合启动时的端口等待。
+                if let Ok(exe) = std::env::current_exe() {
+                    let _ = Command::new(exe).spawn();
+                }
+                app.exit(0);
             }
         }
     });
@@ -77,6 +82,14 @@ fn main() {
         .setup(|app| {
             let handle = app.handle().clone();
             let mut child: Option<Child> = None;
+
+            // 升级重启时旧实例可能还没退干净：等它把端口释放，最多 12 秒。
+            // 不等的话新 sidecar 会误判「已有实例」而直接退出，窗口就连不上了。
+            let mut waited = 0;
+            while port_open(PORT) && waited < 120 {
+                std::thread::sleep(Duration::from_millis(100));
+                waited += 1;
+            }
 
             if !port_open(PORT) {
                 if let Some(exe) = sidecar_exe(&handle) {

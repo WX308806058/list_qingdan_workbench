@@ -40,8 +40,8 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://github.com/WX308806058/list_qingdan_workbench/releases/latest/download/latest.json",
-        "https://gh-proxy.com/https://github.com/WX308806058/list_qingdan_workbench/releases/latest/download/latest.json"
+        "https://gh-proxy.com/https://github.com/WX308806058/list_qingdan_workbench/releases/latest/download/latest.json",
+        "https://github.com/WX308806058/list_qingdan_workbench/releases/latest/download/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQ3Q0E5NkM2QTY3OThFNDIKUldSQ2pubW14cGJLUnhRSGRwYkxKQWtZakZPUHliMldPREl2UEdsWUxTSDJQRmh0VTZ1Zm5EcTYK"
     }
