@@ -6,22 +6,20 @@ on:
       - "v*"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
 
-    permissions:
-      contents: write
-
     steps:
       - uses: actions/checkout@v4
 
+      # GITHUB_ENV 只对「后续」步骤生效，同一步里读不到 —— 用 sed 改而不是 node 读 env
       - name: 从 tag 同步版本号
         shell: bash
         run: |
-          # GITHUB_ENV 只对「后续」步骤生效，同一步里读不到——
-          # 之前用 node 读 process.env.VERSION 拿到 undefined，
-          # 把 Cargo.toml 写成 version = "undefined"，cargo metadata 直接崩。
           VERSION="${GITHUB_REF_NAME#v}"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
@@ -29,9 +27,7 @@ jobs:
           sed -i 's/"version": "[^"]*"/"version": "'"$VERSION"'"/' src-tauri/tauri.conf.json
           sed -i '0,/^version = "[^"]*"/s//version = "'"$VERSION"'"/' src-tauri/Cargo.toml
 
-          echo "--- 校验 ---"
           grep -m1 '"version"' package.json
-          grep -m1 '"version"' src-tauri/tauri.conf.json
           grep -m1 '^version' src-tauri/Cargo.toml
 
       - uses: actions/setup-node@v4
@@ -51,11 +47,9 @@ jobs:
         with:
           workspaces: src-tauri
 
-      - name: 安装前端依赖
-        run: npm ci
+      - run: npm ci
 
-      - name: 安装 PyInstaller
-        run: python -m pip install --upgrade pyinstaller
+      - run: python -m pip install --upgrade pyinstaller
 
       - name: 打包 Python sidecar
         env:
@@ -63,39 +57,72 @@ jobs:
           PYTHONIOENCODING: utf-8
         run: python scripts/build-sidecar.py
 
-      - name: 构建并发布
-        uses: tauri-apps/tauri-action@v0
+      - name: 构建安装包
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: "清单工作台 v__VERSION__"
-          releaseBody: |
-            自动构建产物。
-            安装包：`清单工作台_<版本>_x64-setup.exe`
-            已安装旧版本的用户无需手动下载，应用启动时会自动升级。
-          releaseDraft: false
-          prerelease: false
+        run: npm run tauri build
 
-      # GitHub 直连在国内常常很慢，把 latest.json 里的下载地址改写成 gh-proxy 镜像。
-      # 注意：signature 字段必须原样保留（就是 .sig 文件内容），只改 url。
-      - name: 改写 latest.json 为国内镜像
+      # 中文产品名会让 GitHub 吞掉资源名里的中文（清单工作台_x64-setup.exe → _x64-setup.exe），
+      # 所以统一改成 ASCII 文件名再上传；签名覆盖的是文件内容，改名不影响校验。
+      - name: 整理产物并生成 latest.json
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          set -e
+          TAG="$GITHUB_REF_NAME"
+          V="$VERSION"
+          REPO="${{ github.repository }}"
+          OUT="qingdan_${V}_x64-setup.exe"
+
+          SRC=$(ls src-tauri/target/release/bundle/nsis/*_x64-setup.exe | head -1)
+          cp "$SRC" "$OUT"
+          cp "$SRC.sig" "$OUT.sig"
+
+          python - "$TAG" "$V" "$REPO" "$OUT" <<'PY'
+          import datetime, json, sys
+
+          tag, ver, repo, out = sys.argv[1:5]
+          sig = open(out + ".sig", encoding="utf-8").read().strip()
+          url = f"https://github.com/{repo}/releases/download/{tag}/{out}"
+          # 国内直连 GitHub 下载很慢，统一走 gh-proxy 镜像
+          mirrored = "https://gh-proxy.com/" + url
+          doc = {
+              "version": ver,
+              "notes": f"清单工作台 {ver}",
+              "pub_date": datetime.datetime.now(datetime.timezone.utc)
+                            .strftime("%Y-%m-%dT%H:%M:%SZ"),
+              "platforms": {
+                  "windows-x86_64": {"signature": sig, "url": mirrored}
+              },
+          }
+          with open("latest.json", "w", encoding="utf-8") as f:
+              json.dump(doc, f, ensure_ascii=False, indent=2)
+          print(json.dumps(doc, ensure_ascii=False, indent=2))
+          PY
+
+          ls -lh "$OUT" "$OUT.sig" latest.json
+
+      - name: 发布 Release
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release download "$GITHUB_REF_NAME" --pattern latest.json --clobber
-          node -e "
-            const fs=require('fs');
-            const j=JSON.parse(fs.readFileSync('latest.json','utf8'));
-            for (const p of Object.values(j.platforms||{})) {
-              if (p.url && !p.url.startsWith('https://gh-proxy.com/')) {
-                p.url = 'https://gh-proxy.com/' + p.url;
-              }
-            }
-            fs.writeFileSync('latest.json', JSON.stringify(j,null,2));
-          "
-          gh release delete-asset "$GITHUB_REF_NAME" latest.json --yes
-          gh release upload "$GITHUB_REF_NAME" latest.json --clobber
+          set -e
+          TAG="$GITHUB_REF_NAME"
+          OUT="qingdan_${VERSION}_x64-setup.exe"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$OUT" "$OUT.sig" latest.json --clobber
+          else
+            gh release create "$TAG" "$OUT" "$OUT.sig" latest.json \
+              --title "清单工作台 $VERSION" \
+              --notes "安装包：\`$OUT\`
+
+          已安装旧版本的用户无需手动下载，应用启动时会自动检测并升级。"
+          fi
+
+          echo "--- 发布结果 ---"
+          gh release view "$TAG" --json assets \
+            --jq '.assets[] | "\(.name)  \(.size) bytes"'
