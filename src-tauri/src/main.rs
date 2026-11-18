@@ -298,7 +298,10 @@ fn main() {
                     "main",
                     WebviewUrl::External(url.parse().expect("bad url")),
                 )
-                .title("清单工作台")
+                .title(format!(
+                    "清单工作台 v{}",
+                    h.package_info().version
+                ))
                 .inner_size(1440.0, 900.0)
                 .min_inner_size(1024.0, 640.0)
                 .center()

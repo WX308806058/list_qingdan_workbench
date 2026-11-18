@@ -298,6 +298,8 @@ function ingest(st) {
   D.projects = [];
   D.chatIndex = new Map();
   D.hidden = Array.isArray(st && st.hiddenProjects) ? st.hiddenProjects : [];
+  const verEl = document.getElementById('appVer');
+  if (verEl) verEl.textContent = st.appVersion ? 'v' + st.appVersion : '';
 
   const projects = Array.isArray(st && st.projects) ? st.projects : [];
   for (const p of projects) {

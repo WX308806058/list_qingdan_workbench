@@ -31,6 +31,24 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 DEFAULT_PORT = int(os.environ.get("LISTWB_PORT") or 8790)
+
+
+def _app_version() -> str:
+    """应用版本：CI 发版时写入仓库根的 VERSION 文件，随包分发。"""
+    here = os.path.dirname(os.path.abspath(__file__))
+    for cand in (os.path.join(STATIC, "VERSION"),
+                 os.path.join(os.path.dirname(STATIC), "VERSION"),
+                 os.path.join(here, "VERSION"),
+                 os.path.join(os.path.dirname(here), "VERSION")):
+        try:
+            if os.path.isfile(cand):
+                with open(cand, encoding="utf-8") as f:
+                    v = f.read().strip()
+                if v:
+                    return v
+        except Exception:
+            continue
+    return ""
 APP_NAME = "list-workbench"
 
 # 每次启动换一个令牌：写操作必须带 X-WB-Token。
@@ -237,6 +255,7 @@ class Handler(BaseHTTPRequestHandler):
     def _snap(self):
         st = pipeline.rebuild()
         st["desktop"] = bool(os.environ.get("LISTWB_DESKTOP"))
+        st["appVersion"] = _app_version()
         return st
 
     def _file(self, rel: str):

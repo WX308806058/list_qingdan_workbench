@@ -415,6 +415,17 @@ body.dragging .rz { pointer-events: auto; }
 .nav-item .dot.p2 { background: var(--p2); }
 .nav-item .dot.p3 { background: var(--p3); }
 
+/* 标题旁的版本号 */
+.app-ver {
+  margin-left: 2px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--hover, #f2f4f7);
+  color: var(--t3);
+  font-size: 11px;
+  line-height: 16px;
+}
+
 /* 项目隐藏 / 恢复 */
 .nav-item { position: relative; }
 .nav-hide {

@@ -31,6 +31,7 @@ def main():
         "--paths", BACKEND,
         "--add-data", UI + ";ui",
         "--add-data", os.path.join(BACKEND, "projects.json") + ";.",
+        "--add-data", os.path.join(ROOT, "VERSION") + ";.",
         "--hidden-import", "pipeline",
         "--distpath", DIST,
         "--workpath", BUILD,
