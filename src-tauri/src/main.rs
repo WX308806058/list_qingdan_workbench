@@ -189,36 +189,94 @@ fn check_update(app: tauri::AppHandle) {
             ));
         };
 
-        // 下载：按字节进度刷进度条
+        // 下载：多线路候选。镜像站（gh-proxy/ghfast 等）经常抽风或限速，
+        // 卡 0% 是常态；每条线路独立超时，失败自动切下一条，最后直连 GitHub 兜底。
         let dl_win = win.clone();
-        let bytes = update
-            .download(
-                |received, total| {
-                    if let Some(total) = total {
-                        if total > 0 {
-                            let pct = received as f64 / total as f64 * 100.0;
-                            let _ = dl_win.eval(&format!(
-                                "window.__upd({:.0}, '正在下载 {:.0}%（{:.1} MB / {:.1} MB）');",
-                                pct,
-                                pct,
-                                received as f64 / 1048576.0,
-                                total as f64 / 1048576.0
-                            ));
+        let mut candidates: Vec<url::Url> = Vec::new();
+        {
+            let orig = update.download_url.clone();
+            if let Some(idx) = orig.as_str().find("https://github.com/") {
+                let inner = &orig.as_str()[idx..];
+                for host in ["", "https://ghfast.top/", "https://gh-proxy.com/"] {
+                    if let Ok(u) = url::Url::parse(&format!("{host}{inner}")) {
+                        if !candidates.contains(&u) {
+                            candidates.push(u);
                         }
                     }
-                },
-                || {},
-            )
-            .await;
-        let bytes = match bytes {
-            Ok(b) => {
-                ulog(&format!("下载完成 {} bytes", b.len()));
-                b
+                }
             }
+            if candidates.is_empty() {
+                candidates.push(orig.clone());
+            } else if !candidates.contains(&orig) {
+                // 原始线路（工作流选的镜像）优先
+                candidates.insert(0, orig);
+            }
+        }
+        ulog(&format!(
+            "下载候选线路: {}",
+            candidates.iter().map(|u| u.as_str().split("//").nth(1).unwrap_or("").split('/').next().unwrap_or("")).collect::<Vec<_>>().join(" → ")
+        ));
+
+        let bytes = 'dl: {
+            for (idx, cand) in candidates.iter().enumerate() {
+                if idx > 0 {
+                    let _ = win.eval(&format!(
+                        "window.__upd(null, '线路较慢，切换备用线路 {}/{}…');",
+                        idx + 1,
+                        candidates.len()
+                    ));
+                    ulog(&format!("切换下载线路: {cand}"));
+                }
+                let mut u = update.clone();
+                u.download_url = cand.clone();
+                u.timeout = Some(Duration::from_secs(240));
+
+                let w = win.clone();
+                let fut = u.download(
+                    move |received, total| {
+                        if let Some(total) = total {
+                            if total > 0 {
+                                let pct = received as f64 / total as f64 * 100.0;
+                                let _ = w.eval(&format!(
+                                    "window.__upd({:.0}, '正在下载 {:.0}%（{:.1} MB / {:.1} MB）');",
+                                    pct,
+                                    pct,
+                                    received as f64 / 1048576.0,
+                                    total as f64 / 1048576.0
+                                ));
+                            }
+                        }
+                    },
+                    || {},
+                );
+                // 单线路 4 分钟上限：进度条卡死的下载没有等下去的价值
+                match tokio::time::timeout(Duration::from_secs(240), fut).await {
+                    Ok(Ok(b)) => {
+                        ulog(&format!("下载完成 {} bytes（线路 {cand}）", b.len()));
+                        break 'dl Ok(b);
+                    }
+                    Ok(Err(e)) => ulog(&format!("线路失败: {e}")),
+                    Err(_) => ulog(&format!("线路超时(240s): {cand}")),
+                }
+            }
+            Err("所有下载线路均失败".to_string())
+        };
+        let bytes = match bytes {
+            Ok(b) => b,
             Err(e) => {
-                ulog(&format!("下载失败: {e}"));
-                say(&win, None, "下载失败，可稍后重试或手动下载新版本");
-                std::thread::sleep(Duration::from_secs(6));
+                ulog(&format!("下载最终失败: {e}"));
+                say(&win, None, "自动下载失败，已为你打开下载页，请手动安装");
+                // 浏览器走用户自己的代理，直连 GitHub 没问题
+                #[cfg(windows)]
+                {
+                    use std::os::windows::process::CommandExt;
+                    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+                    let _ = Command::new("cmd")
+                        .args(["/C", "start", "", "https://github.com/WX308806058/list_qingdan_workbench/releases/latest"])
+                        .creation_flags(CREATE_NO_WINDOW)
+                        .spawn();
+                }
+                std::thread::sleep(Duration::from_secs(10));
                 app.exit(0);
                 return;
             }

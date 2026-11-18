@@ -87,8 +87,8 @@ jobs:
           tag, ver, repo, out = sys.argv[1:5]
           sig = open(out + ".sig", encoding="utf-8").read().strip()
           url = f"https://github.com/{repo}/releases/download/{tag}/{out}"
-          # 国内直连 GitHub 下载很慢，统一走 gh-proxy 镜像
-          mirrored = "https://gh-proxy.com/" + url
+          # 国内直连 GitHub 下载很慢，统一走镜像（ghfast 实测比 gh-proxy 快）
+          mirrored = "https://ghfast.top/" + url
           doc = {
               "version": ver,
               "notes": f"清单工作台 {ver}",
