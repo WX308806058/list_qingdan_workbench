@@ -429,13 +429,16 @@ body.dragging .rz { pointer-events: auto; }
 /* 项目隐藏 / 恢复 */
 .nav-item { position: relative; }
 .nav-hide {
-  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+  position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
   width: 18px; height: 18px; line-height: 16px; text-align: center;
   border-radius: 4px;
   color: var(--t3); font-size: 11px;
   opacity: 0; transition: opacity 120ms var(--ease), background 120ms var(--ease);
 }
-.nav-item:hover .nav-hide { opacity: .75; }
+/* hover 时数字让位给 ✕，两个都显示会叠成「10」 */
+.nav-item .nav-num { transition: opacity 120ms var(--ease); }
+.nav-item:hover .nav-num { opacity: 0; }
+.nav-item:hover .nav-hide { opacity: .8; }
 .nav-hide:hover { opacity: 1 !important; background: rgba(16, 24, 40, .08); color: var(--warn); }
 
 .nav-hd {
