@@ -44,6 +44,7 @@
     <button id="densityBtn" class="btn" type="button" title="切换行高（舒适 / 紧凑）">舒适</button>
     <button id="logBtn" class="btn" type="button" title="把今天做的事整理成一份工作日志">工作日志</button>
     <button id="exportBtn" class="btn" type="button" title="导出当前视图为 Markdown">导出</button>
+    <button id="httplogBtn" class="btn" type="button" title="查看本机 HTTP 访问日志">HTTP 日志</button>
     <button id="refreshBtn" class="btn icon" type="button" title="重新采集微信数据" aria-label="重新采集">↻</button>
   </header>
 
@@ -123,6 +124,22 @@
       <button class="btn ghost sm" type="button" data-edit-close>取消</button>
       <button class="btn primary sm" id="edSave" type="button">保存</button>
     </footer>
+  </div>
+</div>
+
+<!-- HTTP 访问日志 -->
+<div class="modal" id="httplogModal" hidden>
+  <div class="modal-mask" data-httplog-close></div>
+  <div class="modal-card wide" role="dialog" aria-modal="true" aria-labelledby="hlTitle">
+    <header class="modal-h">
+      <h2 id="hlTitle">HTTP 访问日志</h2>
+      <span class="grow"></span>
+      <button class="btn ghost sm" id="hlClear" type="button">清空</button>
+      <button class="btn ghost sm" type="button" data-httplog-close>关闭</button>
+    </header>
+    <div class="modal-body httplog-body">
+      <pre id="httplogPre">加载中…</pre>
+    </div>
   </div>
 </div>
 

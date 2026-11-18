@@ -415,6 +415,16 @@ body.dragging .rz { pointer-events: auto; }
 .nav-item .dot.p2 { background: var(--p2); }
 .nav-item .dot.p3 { background: var(--p3); }
 
+/* HTTP 访问日志查看器 */
+.modal-card.wide { width: min(780px, 100%); }
+.httplog-body { padding: 10px 14px; }
+.httplog-body pre {
+  margin: 0; max-height: 56vh; overflow: auto;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 11.5px; line-height: 1.7;
+  color: var(--t2); white-space: pre;
+}
+
 /* 标题旁的版本号 */
 .app-ver {
   margin-left: 2px;

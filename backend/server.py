@@ -32,6 +32,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 DEFAULT_PORT = int(os.environ.get("LISTWB_PORT") or 8790)
 
+# HTTP 访问日志：内存环形缓冲；轮询类接口不计入，避免自刷爆
+import collections as _collections
+HTTP_LOG = _collections.deque(maxlen=400)
+_HTTPLOG_LOCK = threading.Lock()
+
 
 def _app_version() -> str:
     """应用版本：CI 发版时写入仓库根的 VERSION 文件，随包分发。"""
@@ -252,6 +257,21 @@ class Handler(BaseHTTPRequestHandler):
     def _err(self, code, msg):
         self._json({"error": msg}, code)
 
+    def log_message(self, fmt, *args):
+        """覆写默认 stderr 访问日志：进内存环，页面里可查看。"""
+        try:
+            path = self.path.split("?")[0]
+            if path in ("/api/ping", "/api/httplog", "/api/httplog/clear"):
+                return
+            try:
+                msg = fmt % args
+            except Exception:
+                msg = fmt
+            with _HTTPLOG_LOCK:
+                HTTP_LOG.append(time.strftime("%H:%M:%S") + "  " + (msg.replace('"', '') if isinstance(msg, str) else str(msg)))
+        except Exception:
+            pass
+
     def _snap(self):
         st = pipeline.rebuild()
         st["desktop"] = bool(os.environ.get("LISTWB_DESKTOP"))
@@ -285,6 +305,11 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"app": APP_NAME, "ver": 1, "token": TOKEN})
             elif p == "/api/refresh/status":
                 self._json(PROGRESS)
+            elif p == "/api/httplog":
+                with _HTTPLOG_LOCK:
+                    items = list(HTTP_LOG)
+                items.reverse()                 # 最新在前
+                self._json({"items": items})
             else:
                 self._err(404, "not found")
         except Exception as e:
@@ -371,6 +396,12 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(self._snap())
             except Exception as e:
                 self._err(400, str(e))
+            return
+
+        if p == "/api/httplog/clear":
+            with _HTTPLOG_LOCK:
+                HTTP_LOG.clear()
+            self._json({"ok": True})
             return
 
         if p == "/api/project/hide":

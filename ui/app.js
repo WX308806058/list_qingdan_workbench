@@ -2182,6 +2182,39 @@ function bindEdit() {
 }
 
 function bind() {
+
+  /* HTTP 访问日志查看器：打开期间每 2 秒自动刷新 */
+  let hlTimer = null;
+  const renderHl = (items) => {
+    $('httplogPre').textContent = (items && items.length) ? items.join('\n') : '（暂无访问记录）';
+    const pre = $('httplogPre');
+    pre.scrollTop = 0;                         // 最新在最上面
+  };
+  const fetchHl = async () => {
+    try { renderHl((await getJson('/api/httplog')).items); }
+    catch (e) { $('httplogPre').textContent = '加载失败：' + (e.message || e); }
+  };
+  const openHl = () => {
+    $('httplogModal').hidden = false;
+    fetchHl();
+    hlTimer = setInterval(fetchHl, 2000);
+  };
+  const closeHl = () => {
+    $('httplogModal').hidden = true;
+    if (hlTimer) { clearInterval(hlTimer); hlTimer = null; }
+  };
+
+  $('httplogBtn').addEventListener('click', openHl);
+  $('httplogModal').addEventListener('click', (e) => {
+    if (e.target.closest('[data-httplog-close]')) closeHl();
+  });
+  $('httplogModal').addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { closeHl(); e.preventDefault(); }
+  });
+  $('hlClear').addEventListener('click', async () => {
+    try { await post('/api/httplog/clear', {}); fetchHl(); } catch (_) {}
+  });
+
   bindEdit();
   $('listHead').addEventListener('click', (e) => {
     if (e.target.closest('[data-fx]')) {
