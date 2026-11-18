@@ -118,7 +118,10 @@ def main():
         projects_json = ensure_user_data(bundle, home)
         patch_pipeline(home, projects_json)
 
-        os.environ["LISTWB_STATIC"] = bundle
+        # 源码直跑时 ui/ 在工程根目录；打包后随 _MEIPASS 分发
+        static = bundle if getattr(sys, "_MEIPASS", None) else \
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        os.environ["LISTWB_STATIC"] = static
         os.environ["LISTWB_PIPELINE"] = bundle
         os.environ["LISTWB_PORT"] = str(args.port)
 

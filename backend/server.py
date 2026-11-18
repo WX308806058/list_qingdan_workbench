@@ -354,6 +354,27 @@ class Handler(BaseHTTPRequestHandler):
                 self._err(400, str(e))
             return
 
+        if p == "/api/project/hide":
+            # 软隐藏：项目从所有列表与统计中消失（pipeline 已剔除），
+            # 数据原样保留，可随时恢复。识别错的项目、已完结的项目用这个。
+            try:
+                body = json.loads(raw or b"{}")
+                pid = body["id"]
+                if body.get("hidden", True):
+                    pipeline.remove_project(pid)
+                    # 合成项目（如 __other__）不在配置里，remove_project 拿不到名字
+                    if body.get("name"):
+                        data = pipeline.read_json(pipeline.REMOVED, {})
+                        if pid in data and not data[pid].get("name"):
+                            data[pid]["name"] = str(body["name"])
+                            pipeline.write_json(pipeline.REMOVED, data)
+                else:
+                    pipeline.restore_project(pid)
+                self._json(self._snap())
+            except Exception as e:
+                self._err(400, str(e))
+            return
+
         self._err(404, "not found")
 
 

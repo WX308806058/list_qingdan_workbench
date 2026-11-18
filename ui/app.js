@@ -136,6 +136,7 @@ const S = {
   density: store(K.density) === 'compact' ? 'compact' : 'comfort',
   mode: store(K.mode) === 'dash' ? 'dash' : 'list',
   warnOpen: false,
+  showHidden: false,
   logMd: '',
   logHtml: '',
   logTab: 'doc',
@@ -296,6 +297,7 @@ function ingest(st) {
   D.byId = new Map();
   D.projects = [];
   D.chatIndex = new Map();
+  D.hidden = Array.isArray(st && st.hiddenProjects) ? st.hiddenProjects : [];
 
   const projects = Array.isArray(st && st.projects) ? st.projects : [];
   for (const p of projects) {
@@ -495,15 +497,37 @@ function renderNav() {
       <span class="nav-num">${num[v.id] || 0}</span>
     </button></li>`).join('');
 
-  $('projectList').innerHTML = D.projects.length
+  const hideBtn = (id, name) =>
+    `<span class="nav-hide" data-hide="${esc(id)}" data-name="${esc(name)}"
+           title="隐藏「${esc(name)}」（可随时恢复）" role="button" tabindex="-1">✕</span>`;
+
+  const projHtml = D.projects.length
     ? D.projects.map(p => `
       <li><button class="nav-item${S.projectFilter === p.id ? ' on' : ''}" type="button"
                   data-project="${esc(p.id)}" title="${esc(p.name)} · 待办 ${p.open}">
         <span class="dot ${esc(p.priority.toLowerCase())}"></span>
         <span class="nav-txt">${esc(p.name)}</span>
         <span class="nav-num">${p.open}</span>
+        ${hideBtn(p.id, p.name)}
       </button></li>`).join('')
     : `<li><div class="nav-item" style="cursor:default;color:var(--t3)">暂无项目</div></li>`;
+
+  // 已隐藏分组：识别错 / 已完结的项目收在这里，可随时恢复
+  const hid = D.hidden || [];
+  const hiddenHtml = hid.length ? `
+      <li><button class="nav-hd" type="button" data-hidden-toggle
+                  title="这些项目不会出现在任何列表与统计里">
+        <span class="nav-txt">已隐藏</span>
+        <span class="nav-num">${hid.length}</span>
+        <span class="nw-caret" aria-hidden="true">${S.showHidden ? '▾' : '▸'}</span>
+      </button></li>
+      ${S.showHidden ? hid.map(h => `
+      <li><div class="nav-item nav-item-hidden" title="${esc(h.name)} · 隐藏于 ${esc(h.at || '')}">
+        <span class="nav-txt">${esc(h.name)}</span>
+        <span class="nav-restore" data-restore="${esc(h.id)}" role="button" tabindex="-1">恢复</span>
+      </div></li>`).join('') : ''}` : '';
+
+  $('projectList').innerHTML = projHtml + hiddenHtml;
 
   const st = S.state || {};
   const warns = Array.isArray(st.warnings) ? st.warnings : [];
@@ -2202,7 +2226,32 @@ function bind() {
     const b = e.target.closest('[data-view]');
     if (b) setView(b.dataset.view);
   });
-  $('projectList').addEventListener('click', (e) => {
+  $('projectList').addEventListener('click', async (e) => {
+    const hide = e.target.closest('[data-hide]');
+    if (hide) {
+      const id = hide.dataset.hide, name = hide.dataset.name || id;
+      if (!confirm(`隐藏「${name}」？\n它将从所有列表与统计中消失（数据保留），\n可在左侧底部「已隐藏」里随时恢复。`)) return;
+      try {
+        const st = await post('/api/project/hide', { id, hidden: true, name });
+        ingest(st);
+        if (S.projectFilter === id) setProject(id);   // 正筛着它就顺手取消筛选
+        renderAll();
+        toast(`已隐藏「${name}」`);
+      } catch (err) { toast(err.message || String(err), true); }
+      return;
+    }
+    const res = e.target.closest('[data-restore]');
+    if (res) {
+      const id = res.dataset.restore;
+      try {
+        const st = await post('/api/project/hide', { id, hidden: false });
+        ingest(st);
+        renderAll();
+        toast('已恢复显示');
+      } catch (err) { toast(err.message || String(err), true); }
+      return;
+    }
+    if (e.target.closest('[data-hidden-toggle]')) { S.showHidden = !S.showHidden; renderNav(); return; }
     const b = e.target.closest('[data-project]');
     if (b) setProject(b.dataset.project);
   });
