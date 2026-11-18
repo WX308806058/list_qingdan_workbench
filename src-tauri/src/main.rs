@@ -232,19 +232,35 @@ fn check_update(app: tauri::AppHandle) {
                 u.timeout = Some(Duration::from_secs(240));
 
                 let w = win.clone();
+                // 注意：插件回调的第一个参数是「本片大小」不是累计字节（源码 on_chunk(chunk.len(), …)），
+                // 直接除以 total 会永远算出 0%~1% 之间抖动。必须自己累加。
+                let acc = std::cell::Cell::new(0u64);
+                let last_paint = std::cell::Cell::new(0u128);
                 let fut = u.download(
-                    move |received, total| {
+                    move |chunk, total| {
+                        let now = acc.get() + chunk as u64;
+                        acc.set(now);
                         if let Some(total) = total {
-                            if total > 0 {
-                                let pct = received as f64 / total as f64 * 100.0;
-                                let _ = w.eval(&format!(
-                                    "window.__upd({:.0}, '正在下载 {:.0}%（{:.1} MB / {:.1} MB）');",
-                                    pct,
-                                    pct,
-                                    received as f64 / 1048576.0,
-                                    total as f64 / 1048576.0
-                                ));
+                            if total == 0 {
+                                return;
                             }
+                            // 节流：每 150ms 刷一次，chunk 频率太高会闪
+                            let ms = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .map(|d| d.as_millis())
+                                .unwrap_or(0);
+                            if ms.saturating_sub(last_paint.get()) < 150 {
+                                return;
+                            }
+                            last_paint.set(ms);
+                            let pct = now as f64 / total as f64 * 100.0;
+                            let _ = w.eval(&format!(
+                                "window.__upd({:.0}, '正在下载 {:.0}%（{:.1} MB / {:.1} MB）');",
+                                pct,
+                                pct,
+                                now as f64 / 1048576.0,
+                                total as f64 / 1048576.0
+                            ));
                         }
                     },
                     || {},
