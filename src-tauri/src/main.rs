@@ -55,6 +55,23 @@ fn wait_port(port: u16, timeout: Duration) -> bool {
 }
 
 /// 杀掉 sidecar 并等它真的退出（kill 只是发信号，句柄可能还没释放）。
+/// 升级过程日志。出问题的时候，日志是唯一的证据——别再靠猜。
+fn ulog(msg: &str) {
+    use std::io::Write;
+    let dir = if let Ok(d) = std::env::var("APPDATA") {
+        std::path::PathBuf::from(d).join("清单工作台")
+    } else {
+        return;
+    };
+    let _ = std::fs::create_dir_all(&dir);
+    let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true)
+        .open(dir.join("update.log")) else { return };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs()).unwrap_or(0);
+    let _ = writeln!(f, "[{}] {}", now, msg);
+}
+
 fn kill_sidecar(app: &tauri::AppHandle) {
     if let Some(state) = app.try_state::<Sidecar>() {
         if let Ok(mut guard) = state.0.lock() {
@@ -105,8 +122,11 @@ fn relaunch_detached() {
     // 批处理文件必须是纯 ASCII：cmd 按 GBK 读取，UTF-8 写入的中文路径会变乱码，
     // start 找不到文件且不报任何错。路径改从命令行参数传入（命令行是 Unicode 安全的）。
     let script = std::env::temp_dir().join("qingdan-relaunch.cmd");
-    let content = "@echo off\r\nping -n 3 127.0.0.1 >nul\r\nstart \"\" \"%~1\"\r\ndel \"%~f0\"\r\n";
+    // 日志写独立文件（纯 ASCII），避免编码干扰判断
+    let rlog = std::env::temp_dir().join("qingdan-relaunch.log");
+    let content = "@echo off\r\necho cmd started >> \"%TEMP%\\qingdan-relaunch.log\"\r\nping -n 3 127.0.0.1 >nul\r\necho ping done, starting >> \"%TEMP%\\qingdan-relaunch.log\"\r\nstart \"\" \"%~1\"\r\necho start err=%errorlevel% >> \"%TEMP%\\qingdan-relaunch.log\"\r\ndel \"%~f0\"\r\n";
     if std::fs::write(&script, content).is_err() {
+        ulog("自启动脚本写入失败，直接 spawn");
         let _ = Command::new(&exe).spawn();
         return;
     }
@@ -119,6 +139,7 @@ fn relaunch_detached() {
             .args(["/C", &script.to_string_lossy(), &exe.to_string_lossy().to_string()])
             .creation_flags(CREATE_NO_WINDOW)
             .spawn();
+        ulog("自启动 cmd 已拉起");
     }
     #[cfg(not(windows))]
     {
@@ -136,8 +157,14 @@ fn check_update(app: tauri::AppHandle) {
         };
 
         let update = match updater.check().await {
-            Ok(Some(u)) => u,
-            _ => return,
+            Ok(Some(u)) => {
+                ulog(&format!("发现新版本 {}", u.version));
+                u
+            }
+            _ => {
+                ulog("没有可用更新");
+                return;
+            }
         };
 
         let to = update.version.clone();
@@ -175,8 +202,12 @@ fn check_update(app: tauri::AppHandle) {
             )
             .await;
         let bytes = match bytes {
-            Ok(b) => b,
-            Err(_) => {
+            Ok(b) => {
+                ulog(&format!("下载完成 {} bytes", b.len()));
+                b
+            }
+            Err(e) => {
+                ulog(&format!("下载失败: {e}"));
                 say(&win, None, "下载失败，可稍后重试或手动下载新版本");
                 std::thread::sleep(Duration::from_secs(6));
                 app.exit(0);
@@ -187,10 +218,12 @@ fn check_update(app: tauri::AppHandle) {
         say(&win, None, "正在停止后台服务…");
         kill_sidecar(&app);
         std::thread::sleep(Duration::from_millis(800));
+        ulog("sidecar 已停止");
 
         say(&win, None, "正在安装新版本…");
         let installer = std::env::temp_dir().join("qingdan-update-setup.exe");
         if std::fs::write(&installer, &bytes).is_err() {
+            ulog("安装包写入失败");
             say(&win, None, "写入安装包失败，请手动更新");
             std::thread::sleep(Duration::from_secs(6));
             app.exit(0);
@@ -215,6 +248,7 @@ fn check_update(app: tauri::AppHandle) {
         }
         .map(|st| st.success())
         .unwrap_or(false);
+        ulog(&format!("静默安装退出码成功={ok}"));
         let _ = std::fs::remove_file(&installer);
 
         if !ok {
