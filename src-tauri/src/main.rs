@@ -113,21 +113,23 @@ fn build_progress_window(
 /// 升级完成后拉起新版本。
 /// 不直接 spawn：刚 exit 的瞬间安装器可能还没交还句柄，新进程起不来。
 /// 写一个自删除的 cmd，等 2 秒再 start，彻底和旧进程解耦。
-fn relaunch_detached() {
+/// 挂一个独立的 cmd：等安装器退出后拉起新版本。
+///
+/// 为什么不直接 start？因为 NSIS 安装器要替换正在运行的 app exe，
+/// 会先把我们的进程杀掉——status() 之后的任何代码都不会执行。
+/// 所以自启动必须「先挂出去、再跑安装器」，与 app 的生死完全解耦。
+fn relaunch_when_installed_gone(installer: &std::path::Path, app: &tauri::AppHandle) {
     let exe = match std::env::current_exe() {
         Ok(p) => p,
         Err(_) => return,
     };
 
-    // 批处理文件必须是纯 ASCII：cmd 按 GBK 读取，UTF-8 写入的中文路径会变乱码，
-    // start 找不到文件且不报任何错。路径改从命令行参数传入（命令行是 Unicode 安全的）。
+    // 批处理必须纯 ASCII：cmd 按 GBK 解析，UTF-8 的中文路径会变乱码。
+    // exe 路径含中文，改从命令行参数传（命令行是 Unicode 安全的）。
     let script = std::env::temp_dir().join("qingdan-relaunch.cmd");
-    // 日志写独立文件（纯 ASCII），避免编码干扰判断
-    let rlog = std::env::temp_dir().join("qingdan-relaunch.log");
-    let content = "@echo off\r\necho cmd started >> \"%TEMP%\\qingdan-relaunch.log\"\r\nping -n 3 127.0.0.1 >nul\r\necho ping done, starting >> \"%TEMP%\\qingdan-relaunch.log\"\r\nstart \"\" \"%~1\"\r\necho start err=%errorlevel% >> \"%TEMP%\\qingdan-relaunch.log\"\r\ndel \"%~f0\"\r\n";
+    let content = "@echo off\r\n\r\necho cmd start >> \"%TEMP%\\qingdan-relaunch.log\"\r\n\r\nrem 等主进程退干净\r\nping -n 4 127.0.0.1 >nul\r\n\r\nset /a tries=0\r\n:wait\r\ntasklist /FI \"IMAGENAME eq qingdan-update-setup.exe\" 2>nul | find /I \"qingdan-update-setup.exe\" >nul\r\nif errorlevel 1 goto startnow\r\nset /a tries+=1\r\nif %tries% GEQ 60 goto startnow\r\nping -n 2 127.0.0.1 >nul\r\ngoto wait\r\n\r\n:startnow\r\necho installer gone, starting app >> \"%TEMP%\\qingdan-relaunch.log\"\r\nstart \"\" \"%~1\"\r\necho start err=%errorlevel% >> \"%TEMP%\\qingdan-relaunch.log\"\r\ndel \"%~f0\"\r\n";
     if std::fs::write(&script, content).is_err() {
-        ulog("自启动脚本写入失败，直接 spawn");
-        let _ = Command::new(&exe).spawn();
+        ulog("自启动脚本写入失败");
         return;
     }
 
@@ -135,16 +137,23 @@ fn relaunch_detached() {
     {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        let _ = Command::new("cmd")
-            .args(["/C", &script.to_string_lossy(), &exe.to_string_lossy().to_string()])
+        let spawned = Command::new("cmd")
+            .args([
+                "/C",
+                &script.to_string_lossy(),
+                &exe.to_string_lossy().to_string(),
+            ])
             .creation_flags(CREATE_NO_WINDOW)
             .spawn();
-        ulog("自启动 cmd 已拉起");
+        ulog(&format!("自启动 cmd 已挂出: {}", spawned.is_ok()));
     }
     #[cfg(not(windows))]
     {
-        let _ = Command::new(&exe).spawn();
+        let _ = Command::new("cmd")
+            .args(["/C", &script.to_string_lossy(), &exe.to_string_lossy().to_string()])
+            .spawn();
     }
+    let _ = app; // 占位：保持签名一致
 }
 
 /// 启动后静默检查更新：发现新版本 → 弹进度窗 → 下载（带百分比）→
@@ -221,6 +230,7 @@ fn check_update(app: tauri::AppHandle) {
         ulog("sidecar 已停止");
 
         say(&win, None, "正在安装新版本…");
+
         let installer = std::env::temp_dir().join("qingdan-update-setup.exe");
         if std::fs::write(&installer, &bytes).is_err() {
             ulog("安装包写入失败");
@@ -229,39 +239,26 @@ fn check_update(app: tauri::AppHandle) {
             app.exit(0);
             return;
         }
+        ulog(&format!("安装包已写入 {:?}", installer));
 
-        // /S = NSIS 静默安装；status() 等它真正装完再拉新版本
+        // 顺序关键：自启动 cmd 必须先挂出去，再跑安装器。
+        // 安装器替换运行中的 exe 时会把本进程杀掉，这之后的代码不会执行。
+        relaunch_when_installed_gone(&installer, &app);
+
         #[cfg(windows)]
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        let ok = {
-            #[cfg(windows)]
-            {
-                Command::new(&installer)
-                    .arg("/S")
-                    .creation_flags(CREATE_NO_WINDOW)
-                    .status()
-            }
-            #[cfg(not(windows))]
-            {
-                Command::new(&installer).arg("/S").status()
-            }
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            let _ = Command::new(&installer)
+                .arg("/S")
+                .creation_flags(CREATE_NO_WINDOW)
+                .spawn();
         }
-        .map(|st| st.success())
-        .unwrap_or(false);
-        ulog(&format!("静默安装退出码成功={ok}"));
-        let _ = std::fs::remove_file(&installer);
-
-        if !ok {
-            say(&win, None, "安装失败，请手动更新");
-            std::thread::sleep(Duration::from_secs(8));
-            app.exit(0);
-            return;
+        #[cfg(not(windows))]
+        {
+            let _ = Command::new(&installer).arg("/S").spawn();
         }
-
-        say(&win, Some(100.0), "安装完成，正在启动新版本…");
-        std::thread::sleep(Duration::from_millis(500));
-        relaunch_detached();
-        app.exit(0);
+        ulog("安装器已启动；本进程将由安装器结束，新版本由 cmd 拉起");
     });
 }
 
