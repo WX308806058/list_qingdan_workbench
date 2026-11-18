@@ -1,6 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::net::TcpStream;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::sync::Mutex;
@@ -64,10 +66,67 @@ fn kill_sidecar(app: &tauri::AppHandle) {
     }
 }
 
-/// 启动后静默检查更新：下载 → 落临时文件 → 用 /S 静默安装 → 拉起新版本。
-///
-/// 不用 `download_and_install()`：它内部跑的安装器会弹交互式向导，
-/// 用户正开着应用时突然冒出安装界面很吓人，而且被 sidecar 锁文件时会卡住。
+/// 升级进度窗：一个小窗口告诉用户「正在干什么」，下载百分比实时刷新。
+/// 没有它，升级期间应用毫无征兆地消失又出现，像被杀进程一样。
+fn build_progress_window(
+    app: &tauri::AppHandle,
+    to: &str,
+) -> Result<tauri::WebviewWindow, tauri::Error> {
+    let win = WebviewWindowBuilder::new(
+        app,
+        "updater",
+        WebviewUrl::App("update.html".into()),
+    )
+    .title("正在更新 清单工作台")
+    .inner_size(430.0, 168.0)
+    .resizable(false)
+    .maximizable(false)
+    .minimizable(false)
+    .always_on_top(true)
+    .center()
+    .build()?;
+
+    let _ = win.eval(&format!(
+        "window.__ver('{}'); window.__upd(null, '正在检查更新…');",
+        to
+    ));
+    Ok(win)
+}
+
+/// 升级完成后拉起新版本。
+/// 不直接 spawn：刚 exit 的瞬间安装器可能还没交还句柄，新进程起不来。
+/// 写一个自删除的 cmd，等 2 秒再 start，彻底和旧进程解耦。
+fn relaunch_detached() {
+    let exe = match std::env::current_exe() {
+        Ok(p) => p,
+        Err(_) => return,
+    };
+    let script = std::env::temp_dir().join("qingdan-relaunch.cmd");
+    let content = format!(
+        "@echo off\r\nping -n 3 127.0.0.1 >nul\r\nstart \"\" \"{}\"\r\ndel \"%~f0\"\r\n",
+        exe.display()
+    );
+    if std::fs::write(&script, content).is_ok() {
+        #[cfg(windows)]
+        {
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            let _ = Command::new("cmd")
+                .args(["/C", &script.to_string_lossy()])
+                .creation_flags(CREATE_NO_WINDOW)
+                .spawn();
+            return;
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = Command::new(exe).spawn();
+        }
+    } else {
+        let _ = Command::new(exe).spawn();
+    }
+}
+
+/// 启动后静默检查更新：发现新版本 → 弹进度窗 → 下载（带百分比）→
+/// 杀 sidecar → /S 静默安装 → 拉起新版本退出。
 fn check_update(app: tauri::AppHandle) {
     tauri::async_runtime::spawn(async move {
         let updater = match app.updater() {
@@ -80,33 +139,93 @@ fn check_update(app: tauri::AppHandle) {
             _ => return,
         };
 
-        let bytes = match update.download(|_, _| {}, || {}).await {
-            Ok(b) => b,
+        let to = update.version.clone();
+        let win = match build_progress_window(&app, &to) {
+            Ok(w) => w,
             Err(_) => return,
         };
+        let say = |win: &tauri::WebviewWindow, pct: Option<f64>, label: &str| {
+            let _ = win.eval(&format!(
+                "window.__upd({:.0}, '{}');",
+                pct.unwrap_or(-1.0).max(0.0),
+                label
+            ));
+        };
 
-        // 安装前先杀 sidecar，否则它锁着 _internal 里的 DLL
+        // 下载：按字节进度刷进度条
+        let dl_win = win.clone();
+        let bytes = update
+            .download(
+                |received, total| {
+                    if let Some(total) = total {
+                        if total > 0 {
+                            let pct = received as f64 / total as f64 * 100.0;
+                            let _ = dl_win.eval(&format!(
+                                "window.__upd({:.0}, '正在下载 {:.0}%（{:.1} MB / {:.1} MB）');",
+                                pct,
+                                pct,
+                                received as f64 / 1048576.0,
+                                total as f64 / 1048576.0
+                            ));
+                        }
+                    }
+                },
+                || {},
+            )
+            .await;
+        let bytes = match bytes {
+            Ok(b) => b,
+            Err(_) => {
+                say(&win, None, "下载失败，可稍后重试或手动下载新版本");
+                std::thread::sleep(Duration::from_secs(6));
+                app.exit(0);
+                return;
+            }
+        };
+
+        say(&win, None, "正在停止后台服务…");
         kill_sidecar(&app);
         std::thread::sleep(Duration::from_millis(800));
 
+        say(&win, None, "正在安装新版本…");
         let installer = std::env::temp_dir().join("qingdan-update-setup.exe");
         if std::fs::write(&installer, &bytes).is_err() {
+            say(&win, None, "写入安装包失败，请手动更新");
+            std::thread::sleep(Duration::from_secs(6));
+            app.exit(0);
             return;
         }
 
         // /S = NSIS 静默安装；status() 等它真正装完再拉新版本
-        let ok = Command::new(&installer)
-            .arg("/S")
-            .status()
-            .map(|st| st.success())
-            .unwrap_or(false);
-        let _ = std::fs::remove_file(&installer);
-
-        if ok {
-            if let Ok(exe) = std::env::current_exe() {
-                let _ = Command::new(exe).spawn();
+        #[cfg(windows)]
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        let ok = {
+            #[cfg(windows)]
+            {
+                Command::new(&installer)
+                    .arg("/S")
+                    .creation_flags(CREATE_NO_WINDOW)
+                    .status()
+            }
+            #[cfg(not(windows))]
+            {
+                Command::new(&installer).arg("/S").status()
             }
         }
+        .map(|st| st.success())
+        .unwrap_or(false);
+        let _ = std::fs::remove_file(&installer);
+
+        if !ok {
+            say(&win, None, "安装失败，请手动更新");
+            std::thread::sleep(Duration::from_secs(8));
+            app.exit(0);
+            return;
+        }
+
+        say(&win, Some(100.0), "安装完成，正在启动新版本…");
+        std::thread::sleep(Duration::from_millis(500));
+        relaunch_detached();
         app.exit(0);
     });
 }
