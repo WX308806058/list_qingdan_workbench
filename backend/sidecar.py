@@ -106,6 +106,15 @@ def main():
     # Tauri 是窗口程序，stdout 可能为空；写日志而不是 print 崩掉
     log_path = os.path.join(home, "backend.log")
     try:
+        # 无限追加的日志迟早撑爆磁盘：超 2MB 轮转成 .old
+        if os.path.exists(log_path) and os.path.getsize(log_path) > 2_000_000:
+            old = log_path + ".old"
+            if os.path.exists(old):
+                os.remove(old)
+            os.replace(log_path, old)
+    except Exception:
+        pass
+    try:
         log = open(log_path, "a", encoding="utf-8", buffering=1)
         if sys.stdout is None:
             sys.stdout = log

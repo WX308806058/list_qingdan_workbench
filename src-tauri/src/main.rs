@@ -353,11 +353,16 @@ fn main() {
 
             if !port_open(PORT) {
                 if let Some(exe) = sidecar_exe(&handle) {
-                    child = Command::new(exe)
-                        .arg("--port")
-                        .arg(PORT.to_string())
-                        .spawn()
-                        .ok();
+                    let mut cmd = Command::new(exe);
+                    cmd.arg("--port").arg(PORT.to_string());
+                    // sidecar 是 console 子系统时不加这个会弹 DOS 窗
+                    #[cfg(windows)]
+                    {
+                        use std::os::windows::process::CommandExt;
+                        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+                        cmd.creation_flags(CREATE_NO_WINDOW);
+                    }
+                    child = cmd.spawn().ok();
                 }
             }
             app.manage(Sidecar(Mutex::new(child)));
