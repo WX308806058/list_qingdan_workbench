@@ -101,27 +101,28 @@ fn relaunch_detached() {
         Ok(p) => p,
         Err(_) => return,
     };
+
+    // 批处理文件必须是纯 ASCII：cmd 按 GBK 读取，UTF-8 写入的中文路径会变乱码，
+    // start 找不到文件且不报任何错。路径改从命令行参数传入（命令行是 Unicode 安全的）。
     let script = std::env::temp_dir().join("qingdan-relaunch.cmd");
-    let content = format!(
-        "@echo off\r\nping -n 3 127.0.0.1 >nul\r\nstart \"\" \"{}\"\r\ndel \"%~f0\"\r\n",
-        exe.display()
-    );
-    if std::fs::write(&script, content).is_ok() {
-        #[cfg(windows)]
-        {
-            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-            let _ = Command::new("cmd")
-                .args(["/C", &script.to_string_lossy()])
-                .creation_flags(CREATE_NO_WINDOW)
-                .spawn();
-            return;
-        }
-        #[cfg(not(windows))]
-        {
-            let _ = Command::new(exe).spawn();
-        }
-    } else {
-        let _ = Command::new(exe).spawn();
+    let content = "@echo off\r\nping -n 3 127.0.0.1 >nul\r\nstart \"\" \"%~1\"\r\ndel \"%~f0\"\r\n";
+    if std::fs::write(&script, content).is_err() {
+        let _ = Command::new(&exe).spawn();
+        return;
+    }
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        let _ = Command::new("cmd")
+            .args(["/C", &script.to_string_lossy(), &exe.to_string_lossy().to_string()])
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn();
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = Command::new(&exe).spawn();
     }
 }
 
